@@ -1,3 +1,19 @@
+#  RSS to Telegram Bot
+#  Copyright (C) 2021-2024  Rongrong <i@rong.moe>
+#
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU Affero General Public License as
+#  published by the Free Software Foundation, either version 3 of the
+#  License, or (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU Affero General Public License for more details.
+#
+#  You should have received a copy of the GNU Affero General Public License
+#  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 from __future__ import annotations
 from typing_extensions import Awaitable
 
@@ -62,7 +78,7 @@ class _Watchdog:
         _logger.critical(msg)
         coro = None
         if env.bot is not None:
-            coro = env.loop.create_task(env.bot.send_message(env.MANAGER, f'WATCHDOG: {msg}'))
+            coro = env.loop.create_task(env.bot.send_message(env.ERROR_LOGGING_CHAT, f'WATCHDOG: {msg}'))
         shutdown(prerequisite=coro)
 
     def feed(self, delay: int = 15 * 60):
@@ -83,7 +99,7 @@ class _APSCFilter(logging.Filter):
             self.count += 1
             if self.count != 0 and self.count % 5 == 0:
                 coro = env.bot.send_message(
-                    env.MANAGER,
+                    env.ERROR_LOGGING_CHAT,
                     f'RSS monitor tasks have conflicted too many times ({self.count})!\n'
                     + ('Please store the log and restart.\n(sometimes it may be caused by too many subscriptions)'
                        if self.count < 15 else
@@ -98,7 +114,7 @@ class _APSCFilter(logging.Filter):
             return True
         if ' executed successfully' in msg:
             return False
-        if 'Running job "run_monitor_task' in msg:
+        if 'Running job "Monitor.run_periodic_task' in msg:
             self.count = 0
             self.watchdog.feed()
             return False
@@ -118,7 +134,7 @@ class _TelethonClientUpdatesFilter(logging.Filter):
         msg = record.msg % record.args
         if 'Fatal error' in msg:
             coro = env.bot.send_message(
-                env.MANAGER,
+                env.ERROR_LOGGING_CHAT,
                 msg + '\n\n' + 'Now the bot will restart.'
             )
             _logger.critical('Telethon client fatal error! Exiting...')

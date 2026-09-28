@@ -1,15 +1,125 @@
 # 更新日志
 
-## 尚未发布
+## 未发布
+
+### 亮点
+
+- **支持 Python 3.13**: 正式支持 Python 3.13。官方 Docker 镜像现在也基于 Python 3.13。
+
+### 增强
+
+- **次要的增强**: 改进了一些内部函数以增强与各种 feed 的兼容性。新增了两个环境变量 (`HTTP_MAX_LINE_SIZE` 和 `HTTP_MAX_FIELD_SIZE`，有关详情请参阅 [高级设置](advanced-settings.md))。
+- **次要的重构**: 重构了一些内部函数以提高性能、可读性和可维护性。
+
+### Bug 修复
+
+- **格式不正确的 `<`**: 修复了在 `<code>` 或 `<pre>` 中的 `<` 被渲染为 `&LT` 的问题。这是一个上游问题，参见 [wilsonzlin/minify-html#109](https://github.com/wilsonzlin/minify-html/issues/109)。
+
+## v2.10.0: 容器健康检查、特定于聊天的 #hashtag 和更多
+
+### 亮点
+
+- **容器健康检查**: 官方 Docker 镜像现在包含自动健康检查，用于确定容器是否正常运行。健康检查状态可以在 `docker ps` 中查看。结合 [`autoheal`](https://github.com/willfarrell/docker-autoheal) 或其他监控工具，当容器不健康时可以自动重启容器。
+- **支持特定于聊天的 #hashtag**: Telegram 最近添加了一个名为“特定于聊天的 hashtag”的功能，格式为 `#hashtag@username`。然而，转义 `@` 会破坏这些 hashtag。通过在 hashtag 中允许 `@` 来正确地支持这类 hashtag。
+
+### 增强
+
+- **生成 Telegraph 文章时，不再代理来自 `*.wp.com` 的图像**: `*.wp.com` 位于 `wsrv.nl` (环境变量 `IMAGES_WESERV_NL`) 的阻断列表中。因此，在生成 Telegraph 文章时，这些图像不再被代理。来自 `*.wp.com` 的所有图片都可以用任何 refer 头访问，因此它们现在保持原样。
+- **UA 中的仓库链接**: 默认的 User-Agent 现在包含一个指向仓库的链接，这可以帮助网站管理员识别流量来源并将 RSStT 添加到白名单中。
+- **次要的增强**: 改进了一些内部函数以增强与各种 feed 的兼容性。
+- **次要的重构**: 重构了一些内部函数以提高性能、可读性和可维护性。
+
+### Bug 修复
+
+- **无法识别规范的 `DATABASE_URL`**: 自 v2.9.0 起, 在连接到相应的数据库之前，`DATABASE_URL` 被规范化。然而，在检查 scheme (数据库类型) 的合法性时，无法识别指向本地路径的规范 URL。现在，此类 URL 的规范 (`scheme:/path/to/file.db`) 和传统 (`scheme:///path/to/file.db`) 形式都被正确识别。
+- **订阅时不会根据服务端缓存延迟监控**：自 v2.7.0 起，当检测到激进的服务器端缓存时，监控任务将被延迟（例如 Cloudflare 和 RSSHub，它们使得在缓存过期之前检查更新变得徒劳无功）。但是，当新订阅 feed 时，第一个监视任务不会被推迟。该问题已修复，第一个监控任务会等待服务端缓存过期。
+- **次要的 bug 修复**
+
+## v2.9.0: 与 Telegraph 相关的 revert、跳过证书校验和更多
+
+### 重大变更
+
+由于 [Telegraph 禁用了媒体上传](https://t.me/durov/343)，生成 Telegraph 文章时不再上传媒体 (图片与视频) 。(在 v2.6.0 中首次引入)
+
+### 新增功能
+
+- **关闭 TLS 证书验证**: 环境变量 `VERIFY_TLS` 已被添加以禁用 (设置为 `0` 时) 或启用 (设置为 `1` 时，默认) TLS 证书验证。当订阅 TLS 被错误配置的 feed 时，这很有用。注意：不建议禁用 TLS 证书验证，只应用作最后手段。
+
+### 增强
+
+- **净化文章标题和作者**: 文章 (RSS item 或 Atom entry) 的标题和作者现在被净化以防止意外的格式问题。特别是，预期外的空格和换行符被移除，任何 HTML 元素都被剥离。这有助于在 Telegram 消息以及 Telegraph 文章中正确显示它们。
+- **改善在 Railway.app 上的稳健性**: 一些特定于 Railway 的环境变量被识别以提高在 Railway.app 上的稳健性。特别是，当 `DATABASE_URL` 不可用或无效时，将使用 `DATABASE_PRIVATE_URL` 和 `DATABASE_PUBLIC_URL`。这应该解决在 Railway.app 上的大多数数据库连接问题。
+- **次要的重构**: 重构了一些内部函数以提高可读性和可维护性。
+
+### Bug 修复
+
+- **`/version` 不工作**: 当从 PyPI 安装时 (例如 `pip install rsstt`), `/version` 命令可能会导致错误。这是在 v2.7.0 中引入的一个回归 (regression)。
+- **Bot 管理员可以设置比限制更短的监控间隔**: 由于 v2.8.0 中引入的一个重大变更，bot 管理员可以设置比最小监控间隔更短的间隔的特权变得毫无意义。虽然 v2.8.0 只在监控 feed 的更新时应用了这个限制，但这个版本也将它应用于 bot 管理员的更改订阅监控间隔的尝试。注意: bot 管理员总是可以通过调整 `/set_option` 中的 `minimal_interval` 来降低最小监控间隔 (另请参阅 [高级设置](advanced-settings.md))，但这样做也会允许任何能够使用 bot 的人设置更短的间隔。
+- **次要的 bug 修复**
+
+## v2.8.0: 保留文章顺序、重写的监视器和更多
+
+### 重大变更
+
+- **最小监控间隔被强制实施**: 现在，最小监控间隔 (`/set_option` 中的 `minimal_interval`) 将应用于所有订阅，而不管它们被设置于数据库中的间隔如何。先前，设置最小监控间隔只会影响将来的更改订阅监控间隔的尝试，且不会应用于 bot 管理员。因此，先前存在的订阅和 bot 管理员的订阅逃脱了。新行为更一致和可预测。如果您是自托管实例的 bot 管理员，并且依赖于旧行为，即 bot 管理员能够设置比最小监控间隔更短的间隔，您可能需要调整 `/set_option` 中的 `minimal_interval` (另请参阅 [高级设置](advanced-settings.md))。
+
+### 亮点
+
+- **保留文章顺序**: 在发送文章时保留文章在 feed 中的顺序。先前，所有新文章都被同时发送，失去了它们在 feed 中的顺序。注意：来自不同 feed 的文章仍然同时发送，因此预计会看到它们交错。
+- **重写的监视器**: Feed 监视器已被重写，以提高灵活性和稳健性。它现在更节省内存，并且可以平滑 CPU 使用率的波动。
+
+### 增强
+
+- **打印 bot 的 Telegram 用户信息**: 在 bot 启动时打印 bot 的 Telegram 用户信息。这是为了帮助 bot 管理员在部署 bot 时找到 bot 的用户名和用户 ID。
+- **次要的重构**: 重构了一些内部函数以提高性能和可维护性。
+
+### Bug 修复
+
+- **断开连接后以 0 退出**: 过去，如果 bot 由于网络错误或 Telegram DC 降级而被登出，它将以退出码 0 退出。当 bot 在容器中或作为服务运行时，这会导致混乱。现在，当断开连接时，机器人将以退出码 100 退出。
+- **无法处理完全空白的文章**: 修复由完全空白的文章引起的 `AttributeError`。它们现在会被忽略。
+- **次要的 bug 修复**
+
+## v2.7.0: 来自文章的 #hashtag、Python 3.12 支持和更多
+
+### 重大变更
+
+- **迁移到 `aerich` 0.7.2**：`aerich` (RSStT 的一个依赖项) 0.7.x 中引入的一个重大变更使 RSStT 长期以来无法升级它。已经作出了很多努力，所以迁移预期为无缝的，且不应该造成任何破坏。但是，建议在升级 RSStT 之前进行数据库备份。如果您因迁移而遇到任何问题，请提交错误报告。
+
+### 亮点
+
+- **来自文章 (源条目) 的 #hashtag**: 如果在 `/set` 或 `/set_default` 中启用，来自文章 (源条目) 的 hashtag，在与源的自定义 hashtag 合并后，将被添加到消息中。术语“来自文章的 hashtag”指的是 RSS `<item>` 或 Atom `<entry>` 中的 `<category>` 元素。此功能默认禁用。感谢 [@maooyer](https://github.com/maooyer) 在 [#449](https://github.com/Rongronggg9/RSS-to-Telegram-Bot/pull/449) 中作出的初次贡献。
+- **支持 Python 3.12**: 进行了一些小的修复以支持 Python 3.12。官方 Docker 镜像现在也基于 Python 3.12。
+- **使贡献更容易的辅助脚本**: 在进行更新数据库模型的贡献时，创建数据库迁移文件并不是一件容易的事。[scripts/aerich_helper.py](../scripts/aerich_helper.py) 是一个可以简化这个流程的辅助脚本。将 `--help` 传递给脚本以查看详细的使用指南。
+
+### 增强
+
+- **根据 RSSHub TTL 推迟监控**: 根据 RSSHub 生成的 feed 的 TTL (生存时间) 推迟监控。RSSHub 会缓存 feed 直到 TTL 过期，因此对 TTL 较长的 RSSHub feed 进行激进的监控是不必要的。这旨在减少 RSStT 实例以及 RSSHub 实例的负载。如果 TTL 不可用或小于 5 分钟，则不会应用延迟。考虑到 RSS TTL 被广泛误用的情况，并非由 RSSHub 生成的 feed 不受影响。
+- **根据 Cloudflare 缓存推迟监控**: 同上，但适用于由 Cloudflare 代理的 feed。如果 Cloudflare 代理一个 feed 但不缓存它，将不会对这样的 feed 应用延迟。
+- **更好地处理自定义 #hashtag**: 当设置自定义 hashtag 时，会将破坏 hashtag 的无效字符和标点符号替换为 `_` (下划线)。
+- **改进了监控日志**: 监控日志已经被改进，使其更加信息丰富和易于阅读。
+- **次要的重构**: 重构了一些内部函数以提高可读性和可维护性。
+
+## v2.6.0: 上传媒体到 Telegraph、管理增强
+
+### 亮点
+
+- **上传媒体到 Telegraph**: 在生成 Telegraph 文章时，图片和视频都将被上传到 Telegraph。这是为了解决防盗链问题和提高文章的加载性能。此功能依赖媒体反代服务器 ([Rongronggg9/rsstt-img-relay](https://github.com/Rongronggg9/rsstt-img-relay)) 的最新版本。由于太大而无法上传的图片和视频仍将由 `wsrv.nl` (环境变量 `IMAGES_WESERV_NL`) 或媒体反代服务器 (环境变量 `IMG_RELAY_SERVER`) 进行代理。感谢 [#431](https://github.com/Rongronggg9/RSS-to-Telegram-Bot/pull/431) 的启发。
+
+### 新增功能
+
+- **多个管理员**: 环境变量 `MANAGER` 现在既接受单个用户 ID，也接受由 `;`, `,`, `(空格)`, `(换行)` 或 `(制表符)` 分隔的列表。列表中的每个用户都可以**平等地**管理机器人。
+- **可自定义的错误日志会话**: 先前，一些错误日志总是发送到 bot 管理员。为了使其更加灵活，添加了一个新的环境变量 `ERROR_LOGGING_CHAT`，其接受**单个**用户/频道/群组 ID。如果被设置，这些错误日志将被发送到指定的会话。否则，将选择 `MANAGER` 中的第一个用户 ID 作为默认值。
 
 ### 增强
 
 - **除去 `<li>` 中的表层空格**: 除去 `<li>` (列表项) 中的表层空格 (包括换行符) 以提高可读性。只有前导和尾随空格 (包括换行符) 被除去。
 - **只在群组中设置“强制回复”**: 只在群组中设置 `ReplyKeyboardForceReply` 为 `True`。先前，它也在私聊中被设置。另请参阅下面的“Bug 修复”。
+- **次要的重构**: 重构了一些内部函数以提高可读性和可维护性。
 
 ### Bug 修复
 
 - **(`/sub`) “强制回复”未被清除**: `/sub` 和 `/import` 都将 `ReplyKeyboardForceReply` 设置为 `True` 以强制用户回复 bot。然而，由于 Telegram 的一个 bug，即使用户已经回复过了，它仍然有效，导致回复栏总是重新出现。先前，通过在用户回复后删除包含 `ReplyKeyboardForceReply` 的提示消息，为 `/import` 应用了变通解决方案 (另请参阅 [#170](https://github.com/Rongronggg9/RSS-to-Telegram-Bot/issues/170))。但是 `/sub` 在那时被遗忘了。现在，这个变通解决方案也被应用到了 `/sub` 上。
+- **“远程” `/lang` 不可用**：修复阻止用户“远程”使用 `/lang` 命令的错误。
 
 ## v2.5.0: 响应性优化、小的增强和修复
 
@@ -250,7 +360,7 @@
 
 官方的公开 bot: [@RSStT_Bot](https://t.me/RSStT_Bot)
 
-**这是一个重大的发布。它引入了一些重大变更，因此迁移至新版本需要手动完成。**  
+**这是一个重大的发布。它引入了一些重大变更，因此迁移至新版本需要手动完成。**\
 **更新前请务必阅读[迁移指南](migration-guide-v2.zh.md)！**
 
 ### 重大变更

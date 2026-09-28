@@ -1,11 +1,28 @@
+#  RSS to Telegram Bot
+#  Copyright (C) 2021-2024  Rongrong <i@rong.moe>
+#
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU Affero General Public License as
+#  published by the Free Software Foundation, either version 3 of the
+#  License, or (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU Affero General Public License for more details.
+#
+#  You should have received a copy of the GNU Affero General Public License
+#  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 from __future__ import annotations
 from typing import Union, Optional
 from typing_extensions import Final
 from collections.abc import Awaitable
 
 import asyncio
-import time
 import aiographfix as aiograph
+import re
+import time
 from io import BytesIO
 from bs4 import BeautifulSoup
 from contextlib import suppress
@@ -15,7 +32,7 @@ from aiohttp_socks import ProxyConnector
 
 from .. import env, log
 from .utils import is_emoticon, emojify, resolve_relative_link, isAbsoluteHttpLink
-from .medium import construct_weserv_url
+from ..web.media import construct_weserv_url
 from ..aio_helper import run_async
 
 convert_table_to_png: Optional[Awaitable]
@@ -23,6 +40,29 @@ if env.TABLE_TO_IMAGE:
     from .table_drawer import convert_table_to_png
 else:
     convert_table_to_png = None
+
+DOMAIN_PATTERN_TEMPLATE: Final[str] = r'^https?://(?:[^./]+\.)?(?:{domains})\.?(?:/|:|$)'
+BLOCKED_BY_WESERV_DOMAIN: Final[set[str]] = {
+    'sinaimg.cn',
+    'wp.com',
+}
+BLOCKED_BY_WESERV_RE: Final[re.Pattern] = re.compile(
+    DOMAIN_PATTERN_TEMPLATE.format(
+        domains='|'.join(map(re.escape, BLOCKED_BY_WESERV_DOMAIN)),
+    ),
+    re.I,
+)
+ALLOW_REFERER_DOMAIN: Final[set[str]] = set(filter(None, {
+    'wp.com',
+    env.IMG_RELAY_SERVER.partition('://')[2].partition('/')[0].strip('.'),
+    env.IMAGES_WESERV_NL.partition('://')[2].partition('/')[0].strip('.'),
+}))
+ALLOW_REFERER_RE: Final[re.Pattern] = re.compile(
+    DOMAIN_PATTERN_TEMPLATE.format(
+        domains='|'.join(map(re.escape, ALLOW_REFERER_DOMAIN)),
+    ),
+    re.I,
+)
 
 logger = log.getLogger('RSStT.tgraph')
 
@@ -293,13 +333,15 @@ class TelegraphIfy:
                     if not isAbsoluteHttpLink(attr_content):
                         tag.replaceWithChildren()
                         continue
-                    if not attr_content.startswith(env.IMG_RELAY_SERVER):
+                    if not ALLOW_REFERER_RE.match(attr_content):
                         if tag.name == 'video':
                             attr_content = env.IMG_RELAY_SERVER + attr_content
-                        if tag.name == 'img' and not attr_content.startswith(env.IMAGES_WESERV_NL):
-                            if attr_content.split('.', 1)[1].split('/', 1)[0] == 'sinaimg.cn':
-                                attr_content = env.IMG_RELAY_SERVER + attr_content
-                            attr_content = construct_weserv_url(attr_content)
+                        elif tag.name == 'img':
+                            attr_content = (
+                                env.IMG_RELAY_SERVER + attr_content
+                                if BLOCKED_BY_WESERV_RE.match(attr_content)
+                                else construct_weserv_url(attr_content)
+                            )
                     tag.attrs = {attr_name: attr_content}
 
         if self.feed_title:
@@ -333,7 +375,7 @@ class TelegraphIfy:
         telegraph_account = apis.get_account()
         try:
             telegraph_page = await telegraph_account.create_page(
-                title=f'{self.telegraph_title[:60]}…' if len(self.telegraph_title) > 61 else self.telegraph_title,
+                title=f'{self.telegraph_title[:253]}…' if len(self.telegraph_title) > 254 else self.telegraph_title,
                 content=self.telegraph_html_content,
                 author_name=self.telegraph_author[:128],
                 author_url=self.telegraph_author_url[:512]
